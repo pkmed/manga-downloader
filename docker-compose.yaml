@@ -1,0 +1,30 @@
+services:
+  manga-loader-php:
+    container_name: manga-loader-php
+    build:
+      context: ./docker/
+      dockerfile: Dockerfile
+      args:
+        USER_ID: 1000
+        GROUP_ID: 1000
+    expose:
+      - 9003
+    volumes:
+      - ./:/var/www/html/:rw
+
+  manga-loader-db:
+    container_name: manga-loader-db
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: manga-loader
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - manga-loader-db:/var/lib/mysql
+    ports:
+      - 33066:3306
+
+volumes:
+  manga-loader-db:
