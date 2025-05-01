@@ -31,6 +31,7 @@ class Manga
         private int     $chaptersCount,
         #[ORM\Column(type: Types::TEXT, nullable: true)]
         private ?string $summary = null
+        //todo: add 'mangaDirectoryPath' field
     )
     {
         $this->chapters = new ArrayCollection();

@@ -2,6 +2,8 @@
 
 namespace App\Service;
 
+use App\Downloader\Interface\MangaChapterDownloaderInterface;
+use App\Downloader\Interface\MangaMetadataDownloaderInterface;
 use App\Downloader\MangaChapterDownloader;
 use App\Downloader\MangaMetadataDownloader;
 use App\Factory\MangaChapterFactory;
@@ -19,10 +21,10 @@ use Psr\Log\LoggerInterface;
 readonly class MangaDownloaderService
 {
     public function __construct(
-        private MangaMetadataDownloader $metadataDownloader,
-        private MangaChapterDownloader  $chapterDownloader,
-        private EntityManagerInterface  $entityManager,
-        private LoggerInterface         $logger
+        private MangaMetadataDownloaderInterface $metadataDownloader,
+        private MangaChapterDownloaderInterface  $chapterDownloader,
+        private EntityManagerInterface           $entityManager,
+        private LoggerInterface                  $logger
     )
     {
     }
@@ -44,6 +46,7 @@ readonly class MangaDownloaderService
         $chaptersMeta = $this->chapterDownloader->downloadAllMangaChapters($mangaRequestModel->slugUrl, $mangaMeta['title']);
         $manga        = MangaFactory::createManga($mangaMeta);
         MangaChapterFactory::createMangaChapters($manga, $chaptersMeta);
+        //todo: check if manga already exists in db
         $this->entityManager->persist($manga);
         $this->entityManager->flush();
         $this->logger->info("Manga and pages were downloaded and saved successfully!");

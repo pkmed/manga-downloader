@@ -26,6 +26,7 @@ class MangaChapter
         #[ORM\ManyToOne(inversedBy: 'chapters')]
         #[ORM\JoinColumn(nullable: false)]
         private Manga  $manga,
+        //todo: add 'chapterDirectoryPath' field
     )
     {
     }

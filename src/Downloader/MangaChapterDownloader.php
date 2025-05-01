@@ -2,6 +2,11 @@
 
 namespace App\Downloader;
 
+use App\Downloader\Interface\MangaChapterDownloaderInterface;
+use App\Dto\Manga\MangaChaptersListItemDto;
+use App\Dto\Manga\MangaChaptersListDto;
+use App\Dto\Manga\MangaChaptersMetadataListDto;
+use App\Dto\Manga\MangaChaptersMetadataListItemDto;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
@@ -15,7 +20,7 @@ use Psr\Log\LoggerInterface;
 /**
  * Downloads the chapters of chosen manga
  */
-readonly class MangaChapterDownloader
+readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
 {
     /**
      * @param string $imgServerBaseUri Api endpoint to download pictures from
@@ -38,8 +43,8 @@ readonly class MangaChapterDownloader
      * Downloads the chapters of a manga by manga's slug url
      *
      * @param string $slugUrl A manga slug url
-     * @param string $mangaTitle Title of the manga to download, used to create parent directory for chapters
-     * @return array List of every chapter metadata
+     * @param string $mangaTitle Title of the manga to download, used to create parent directory for the chapters
+     * @return array List of chapters
      * @throws GuzzleException if request to api failed
      * @throws \JsonException if response is not a valid json
      * @throws \Throwable if pages downloading failed
@@ -53,7 +58,7 @@ readonly class MangaChapterDownloader
         $this->logger->info("Chapters metadata downloaded successfully");
 
         foreach ($chaptersMeta as &$chapterMeta) {
-            $downloadPath = $this->createChapterDirectory($mangaTitle, $chapterMeta);
+            $downloadPath             = $this->createChapterDirectory($mangaTitle, $chapterMeta);
             $chapterMeta['filesPath'] = $downloadPath;
             if (!$this->checkChapterDirectoryIsEmpty($downloadPath)) {
                 $this->logger->info("Chapter {$chapterMeta['number']} already downloaded to: {$chapterMeta['filesPath']}");
@@ -67,14 +72,27 @@ readonly class MangaChapterDownloader
     }
 
     /**
+     * Downloads a single chapter of a manga by manga's slug url and chapter number
+     *
+     * @param string $slugUrl A manga slug url
+     * @param string $mangaTitle Title of the manga to download, used to create parent directory for a chapter
+     * @param int    $chapterNumber Number of a chapter to download
+     * @return array Single chapter
+     */
+    public function downloadSingleMangaChapter(string $slugUrl, string $mangaTitle, int $chapterNumber): array
+    {
+        return [];
+    }
+
+    /**
      * Downloads a manga's chapter list
      *
      * @param string $slugUrl A manga slug url
-     * @return array Manga's chapters list
+     * @return MangaChaptersListDto Manga's chapters list
      * @throws GuzzleException if request to api failed
      * @throws \JsonException if response is not a valid json
      */
-    private function downloadChaptersList(string $slugUrl): array
+    private function downloadChaptersList(string $slugUrl): MangaChaptersListDto
     {
         $chaptersListDownloader = new GuzzleClient(['base_uri' => $this->chaptersMetadataApiBaseUri]);
         $requestUri             = "$slugUrl/chapters";
@@ -85,15 +103,25 @@ readonly class MangaChapterDownloader
             throw $guzzleException;
         }
         try {
-            $chapterMetaJson = json_decode(json: $chapterList->getBody()->getContents(), associative: true, flags: JSON_THROW_ON_ERROR);
+            $chaptersMetaJson = json_decode(json: $chapterList->getBody()->getContents(), associative: true, flags: JSON_THROW_ON_ERROR);
         } catch (\JsonException $jsonException) {
             $this->logger->critical(
                 "Chapters list response is not a valid json!", ['responseBody' => $chapterList->getBody()->getContents()]
             );
             throw $jsonException;
         }
-        //todo: add dto
-        return $chapterMetaJson['data'];
+        $mangaChaptersListMetadataDto = new MangaChaptersListDto();
+
+        foreach ($chaptersMetaJson['data'] as $chapterMeta) {
+            $mangaChaptersListMetadataDto->addMangaChaptersListItem(
+                new MangaChaptersListItemDto(
+                    number: $chapterMeta['number'],
+                    volume: $chapterMeta['volume']
+                )
+            );
+        }
+
+        return $mangaChaptersListMetadataDto;
     }
 
     /**
@@ -103,17 +131,17 @@ readonly class MangaChapterDownloader
      * @param array $chaptersList A manga's chapters list
      * @return array List of every chapter metadata
      */
-    private function downloadChaptersMetadata(string $slugUrl, array $chaptersList): array
+    private function downloadChaptersMetadata(string $slugUrl, MangaChaptersListDto $chaptersList): array
     {
         $chapterMetadataRequests = [];
-        foreach ($chaptersList as $chapter) {
+        foreach ($chaptersList->mangaChaptersListIterator() as $chapter) {
             $chapterMetadataRequests[] = new Request(
                 method: 'GET', uri: "$slugUrl/chapter?number={$chapter['number']}&volume={$chapter['volume']}"
             );
         }
 
+        $chaptersMetadata = new MangaChaptersMetadataListDto();
         //todo: add dto
-        $chaptersMetadata = [];
         $rejectedRequests = [];
 
         $chaptersMetaRequestsPool = new Pool(
@@ -123,15 +151,15 @@ readonly class MangaChapterDownloader
                 'concurrency' => $this->concurrency,
                 'fulfilled'   => function (Response $response, $index) use (&$chaptersMetadata) {
                     $chapterMetaJson          = json_decode($response->getBody()->getContents(), true);
-                    $chaptersMetadata[$index] = [
-                        'name'   => $chapterMetaJson['data']['name'],
-                        'volume' => $chapterMetaJson['data']['volume'],
-                        'number' => $chapterMetaJson['data']['number'],
-                        'pages'  => array_map(
+                    $chaptersMetadata[$index] = new MangaChaptersMetadataListItemDto(
+                        name:$chapterMetaJson['data']['name'],
+                        volume: $chapterMetaJson['data']['volume'],
+                        number: $chapterMetaJson['data']['number'],
+                        pages: array_map(
                             fn (array $pageMeta): array => ['image' => $pageMeta['image'], 'url' => $pageMeta['url']],
                             $chapterMetaJson['data']['pages']
                         ),
-                    ];
+                    );
                 },
                 'rejected'    => function (RequestException $reason, $index) use (&$rejectedRequests) {
                     $rejectedRequests[] = [
@@ -148,6 +176,38 @@ readonly class MangaChapterDownloader
         unset($rejectedRequests);
 
         return $chaptersMetadata;
+    }
+
+    /**
+     * Creates save directory for a manga chapter
+     *
+     * @param string $mangaTitle Title of the manga to download, used to create parent directory for chapters
+     * @param array $chapterMeta Chapter metadata
+     * @return string Path to a manga directory, where chapter pages should be saved
+     */
+    private function createChapterDirectory(string $mangaTitle, array $chapterMeta): string
+    {
+        $downloadPath = $this->mangaDirectorySavePath.escapeshellarg($mangaTitle).'/';
+        $saveDirName  = $chapterMeta['volume'].'_'.$chapterMeta['number'];
+        $downloadPath .= $saveDirName;
+
+        if (!is_dir($downloadPath)) {
+            mkdir($downloadPath, 0777, true);
+        }
+
+        return $downloadPath;
+    }
+
+    /**
+     * Checks if chapter directory created and empty
+     *
+     * @param string $downloadPath Path to a manga directory, where chapter pages should be saved
+     * @return bool True if directory is present and empty
+     */
+    private function checkChapterDirectoryIsEmpty(string $downloadPath): bool
+    {
+        //the only 2 elements in directory should be '.' and '..'
+        return is_dir($downloadPath) && count(scandir($downloadPath)) === 2;
     }
 
     /**
@@ -178,37 +238,5 @@ readonly class MangaChapterDownloader
         }
 
         unset($chapterPagesPromises);
-    }
-
-    /**
-     * Creates save directory for a manga chapter
-     *
-     * @param string $mangaTitle Title of the manga to download, used to create parent directory for chapters
-     * @param array $chapterMeta Chapter metadata
-     * @return string Path to a manga directory, where chapter pages should be saved
-     */
-    private function createChapterDirectory(string $mangaTitle, array $chapterMeta): string
-    {
-        $downloadPath = $this->mangaDirectorySavePath.escapeshellarg($mangaTitle).'/';
-        $saveDirName = $chapterMeta['volume'].'_'.$chapterMeta['number'];
-        $downloadPath .= $saveDirName;
-
-        if (!is_dir($downloadPath)) {
-            mkdir($downloadPath, 0777, true);
-        }
-
-        return $downloadPath;
-    }
-
-    /**
-     * Checks if chapter directory created and empty
-     *
-     * @param string $downloadPath Path to a manga directory, where chapter pages should be saved
-     * @return bool True if directory is present and empty
-     */
-    private function checkChapterDirectoryIsEmpty(string $downloadPath): bool
-    {
-        //the only 2 elements in directory should be '.' and '..'
-        return is_dir($downloadPath) && count(scandir($downloadPath)) === 2;
     }
 }

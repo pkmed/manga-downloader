@@ -2,6 +2,8 @@
 
 namespace App\Downloader;
 
+use App\Downloader\Interface\MangaMetadataDownloaderInterface;
+use App\Dto\Manga\MangaMetadataDto;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\GuzzleException;
 use Psr\Log\LoggerInterface;
@@ -9,7 +11,7 @@ use Psr\Log\LoggerInterface;
 /**
  * Downloads metadata of a chosen manga
  */
-readonly class MangaMetadataDownloader
+readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterface
 {
     /**
      * @var GuzzleClient Http client to download a manga's metadata
@@ -32,11 +34,11 @@ readonly class MangaMetadataDownloader
      * Downloads a manga's metadata by slug url
      *
      * @param string $slugUrl A manga's slug from url
-     * @return array A manga's metadata
+     * @return MangaMetadataDto A manga's metadata
      * @throws GuzzleException if request to api failed
      * @throws \JsonException if response is not a valid json
      */
-    public function downloadMangaMetadata(string $slugUrl): array
+    public function downloadMangaMetadata(string $slugUrl): MangaMetadataDto
     {
         try {
             $response = $this->mangaMetadataDownloader->get($slugUrl, [
@@ -65,13 +67,13 @@ readonly class MangaMetadataDownloader
         try {
             $responseJson = json_decode(json: $response->getBody()->getContents(), associative: true, flags: JSON_THROW_ON_ERROR);
             $this->logger->info("Manga's metadata downloaded successfully");
-            //todo: add dto
-            return [
-                'title'         => $responseJson['data']['name'],
-                'summary'       => $responseJson['data']['summary'],
-                'releaseYear'   => $responseJson['data']['releaseDate'],
-                'chaptersCount' => $responseJson['data']['items_count']['uploaded']
-            ];
+
+            return new MangaMetadataDto(
+                title: $responseJson['data']['name'],
+                summary: $responseJson['data']['summary'],
+                releaseYear: $responseJson['data']['releaseDate'],
+                chaptersCount: $responseJson['data']['items_count']['uploaded']
+            );
         } catch (\JsonException $jsonException) {
             $this->logger->critical(
                 "Chapters list response is not a valid json!", ['responseBody' => $response->getBody()->getContents()]
