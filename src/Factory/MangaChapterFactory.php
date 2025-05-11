@@ -2,33 +2,27 @@
 
 namespace App\Factory;
 
+use App\Dto\Manga\MangaChaptersMetadataListItemDto;
 use App\Entity\Manga;
 use App\Entity\MangaChapter;
 
 class MangaChapterFactory
 {
     /**
+     * Creates single manga chapter
+     *
      * @param Manga $manga Manga metadata
-     * @param array $chaptersMeta Manga chapters metadata
-     * @return MangaChapter[]
+     * @param MangaChaptersMetadataListItemDto $chapterMeta Metadata of a manga chapter
+     * @return MangaChapter
      */
-    public static function createMangaChapters(Manga $manga, array $chaptersMeta): array
+    public static function createMangaChapter(Manga $manga, MangaChaptersMetadataListItemDto $chapterMeta): MangaChapter
     {
-        $chapterEntities = [];
-        foreach ($chaptersMeta as $chapterMeta) {
-            $chapter = new MangaChapter(
-                name: $chapterMeta['name'],
-                volume: $chapterMeta['volume'],
-                number: (float) $chapterMeta['number'],
-                pageCount: count($chapterMeta['pages']),
-                manga: $manga
-            );
-
-            $manga->addChapter($chapter);
-
-            $chapterEntities[] = $chapter;
-        }
-
-        return $chapterEntities;
+        return new MangaChapter(
+            name: $chapterMeta->name,
+            volume: $chapterMeta->volume,
+            number: $chapterMeta->number,
+            pageCount: count($chapterMeta->pages),
+            manga: $manga
+        );
     }
 }

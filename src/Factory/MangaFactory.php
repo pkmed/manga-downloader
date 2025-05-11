@@ -9,16 +9,18 @@ use App\Entity\Manga;
 class MangaFactory
 {
     /**
-     * @param MangaMetadataDto $metadata Manga metadata
+     * Creates Manga entity
+     *
+     * @param MangaMetadataDto $mangaMetadata Manga metadata
      * @return Manga
      */
-    public static function createManga(MangaMetadataDto $metadata): Manga
+    public static function createManga(MangaMetadataDto $mangaMetadata): Manga
     {
         return new Manga(
-            title: $metadata->title,
-            releaseYear: $metadata->releaseYear,
-            chaptersCount: $metadata->chaptersCount,
-            summary: $metadata->summary
+            title: $mangaMetadata->title,
+            releaseYear: $mangaMetadata->releaseYear,
+            chaptersCount: $mangaMetadata->chaptersCount,
+            summary: $mangaMetadata->summary
         );
     }
 }

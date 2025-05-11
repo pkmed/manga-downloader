@@ -7,14 +7,21 @@ use App\Dto\Manga\MangaChaptersListItemDto;
 use App\Dto\Manga\MangaChaptersListDto;
 use App\Dto\Manga\MangaChaptersMetadataListDto;
 use App\Dto\Manga\MangaChaptersMetadataListItemDto;
+use App\Dto\Manga\MangaChaptersMetadataListItemPageFileDto;
+use App\Factory\GuzzleClient\GuzzleClientFactory;
+use App\Factory\GuzzleClient\GuzzleClientParameters;
+use App\Factory\GuzzleClient\GuzzleRequestParameters;
+use App\Middleware\GuzzleMiddleware\RequestIntervalMiddleware;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\GuzzleException;
-use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Exception\TransferException;
+use GuzzleHttp\Middleware;
 use GuzzleHttp\Pool;
-use GuzzleHttp\Promise\Utils;
+use GuzzleHttp\Promise\EachPromise;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
-use GuzzleHttp\RequestOptions;
+use Psr\Http\Message\RequestInterface;
+use Psr\Http\Message\ResponseInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -22,6 +29,15 @@ use Psr\Log\LoggerInterface;
  */
 readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
 {
+    /**
+     * @var GuzzleClient Http client to download chapters metadata
+     */
+    private GuzzleClient $chaptersMetadataDownloader;
+
+    private GuzzleClient $mangaPageLoader;
+
+    private const RETRY_LIMIT = 5;
+
     /**
      * @param string $imgServerBaseUri Api endpoint to download pictures from
      * @param string $chaptersMetadataApiBaseUri Api endpoint to download chapters metadata from
@@ -37,19 +53,59 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
         private LoggerInterface $logger
     )
     {
+        $this->chaptersMetadataDownloader = GuzzleClientFactory::createClient(
+            guzzleClientParams: [
+                GuzzleClientParameters::BASE_URI->value => $this->chaptersMetadataApiBaseUri,
+                GuzzleClientParameters::VERIFY->value   => false,
+            ],
+            guzzleClientMiddlewares: [
+                new RequestIntervalMiddleware(),
+            ]
+        );
+
+        $this->mangaPageLoader = GuzzleClientFactory::createClient(
+            guzzleClientParams: [
+                GuzzleClientParameters::VERIFY->value   => false,
+                GuzzleClientParameters::BASE_URI->value => $this->imgServerBaseUri,
+                GuzzleClientParameters::TIMEOUT->value => 20,
+                GuzzleRequestParameters::CONNECTION_TIMEOUT->value => 30
+            ],
+            guzzleClientMiddlewares: [
+                new RequestIntervalMiddleware(),
+                Middleware::retry(
+                    decider: function ($retries, RequestInterface $request, ResponseInterface|null $response, TransferException|null $exception) {
+                        $retry = true;
+                        if ($response && $retries < self::RETRY_LIMIT) {
+                            $retry = in_array($response->getStatusCode(), [429, 499, 500])
+                                && $response->getBody()->getSize() !== (int) $response->getHeaderLine('content-length')
+                                && !empty($contentLength);
+                        }
+
+                        if ($exception instanceof TransferException) {
+                            $retry = true; // Retry on network errors
+                        }
+
+                        if ($retry) {
+                            $this->logger->info('Retrying request: '.$request->getUri());
+
+                            return true;
+                        }
+
+                        return false;
+                    },
+                    delay: function (int $retries) { $this->logger->debug('retry delay 5ms'); return 5; }
+                )
+            ]
+        );
     }
 
     /**
-     * Downloads the chapters of a manga by manga's slug url
-     *
-     * @param string $slugUrl A manga slug url
-     * @param string $mangaTitle Title of the manga to download, used to create parent directory for the chapters
-     * @return array List of chapters
+     * {@inheritDoc}
      * @throws GuzzleException if request to api failed
      * @throws \JsonException if response is not a valid json
      * @throws \Throwable if pages downloading failed
      */
-    public function downloadAllMangaChapters(string $slugUrl, string $mangaTitle): array
+    public function downloadAllMangaChapters(string $slugUrl, string $mangaTitle): MangaChaptersMetadataListDto
     {
         $chaptersList = $this->downloadChaptersList($slugUrl);
         $this->logger->info("Chapters list downloaded successfully");
@@ -57,27 +113,22 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
         $chaptersMeta = $this->downloadChaptersMetadata($slugUrl, $chaptersList);
         $this->logger->info("Chapters metadata downloaded successfully");
 
-        foreach ($chaptersMeta as &$chapterMeta) {
+        foreach ($chaptersMeta->mangaChaptersListIterator() as $chapterMeta) {
             $downloadPath             = $this->createChapterDirectory($mangaTitle, $chapterMeta);
-            $chapterMeta['filesPath'] = $downloadPath;
+            $chapterMeta->fileDirPath = $downloadPath;
             if (!$this->checkChapterDirectoryIsEmpty($downloadPath)) {
-                $this->logger->info("Chapter {$chapterMeta['number']} already downloaded to: {$chapterMeta['filesPath']}");
+                $this->logger->info("Chapter $chapterMeta->number already downloaded to: $chapterMeta->fileDirPath");
                 continue;
             }
             $this->downloadChapterPages($chapterMeta);
-            $this->logger->info("Chapter {$chapterMeta['number']} pages downloaded successfully to: {$chapterMeta['filesPath']}");
+            $this->logger->info("Chapter $chapterMeta->number pages downloaded successfully to: $chapterMeta->fileDirPath");
         }
 
         return $chaptersMeta;
     }
 
     /**
-     * Downloads a single chapter of a manga by manga's slug url and chapter number
-     *
-     * @param string $slugUrl A manga slug url
-     * @param string $mangaTitle Title of the manga to download, used to create parent directory for a chapter
-     * @param int    $chapterNumber Number of a chapter to download
-     * @return array Single chapter
+     * {@inheritDoc}
      */
     public function downloadSingleMangaChapter(string $slugUrl, string $mangaTitle, int $chapterNumber): array
     {
@@ -94,10 +145,9 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
      */
     private function downloadChaptersList(string $slugUrl): MangaChaptersListDto
     {
-        $chaptersListDownloader = new GuzzleClient(['base_uri' => $this->chaptersMetadataApiBaseUri]);
-        $requestUri             = "$slugUrl/chapters";
+        $requestUri = "$slugUrl/chapters";
         try {
-            $chapterList = $chaptersListDownloader->get($requestUri);
+            $chapterList = $this->chaptersMetadataDownloader->get($requestUri);
         } catch (GuzzleException $guzzleException) {
             $this->logger->critical("Chapters list download failed!", ['requestUrl' => $this->chaptersMetadataApiBaseUri.$requestUri]);
             throw $guzzleException;
@@ -128,42 +178,44 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
      * Downloads the metadata of the chapters
      *
      * @param string $slugUrl A manga slug url
-     * @param array $chaptersList A manga's chapters list
-     * @return array List of every chapter metadata
+     * @param MangaChaptersListDto $chaptersList A manga's chapters list
+     * @return MangaChaptersMetadataListDto List of every chapter metadata
      */
-    private function downloadChaptersMetadata(string $slugUrl, MangaChaptersListDto $chaptersList): array
+    private function downloadChaptersMetadata(string $slugUrl, MangaChaptersListDto $chaptersList): MangaChaptersMetadataListDto
     {
         $chapterMetadataRequests = [];
         foreach ($chaptersList->mangaChaptersListIterator() as $chapter) {
-            $chapterMetadataRequests[] = new Request(
-                method: 'GET', uri: "$slugUrl/chapter?number={$chapter['number']}&volume={$chapter['volume']}"
+            /** @var MangaChaptersListItemDto $chapter */
+            $chapterMetadataRequests[] = $this->chaptersMetadataDownloader->requestAsync(
+                method: 'GET', uri: "$slugUrl/chapter?number={$chapter->number}&volume={$chapter->volume}"
             );
         }
 
         $chaptersMetadata = new MangaChaptersMetadataListDto();
-        //todo: add dto
+        //todo: add dto(?)
         $rejectedRequests = [];
 
-        $chaptersMetaRequestsPool = new Pool(
-            new GuzzleClient(['base_uri' => $this->chaptersMetadataApiBaseUri]),
+        $chaptersMetaRequestsPool = new EachPromise(
             $chapterMetadataRequests,
             [
                 'concurrency' => $this->concurrency,
-                'fulfilled'   => function (Response $response, $index) use (&$chaptersMetadata) {
+                'fulfilled'   => function (Response $response) use (&$chaptersMetadata) {
                     $chapterMetaJson          = json_decode($response->getBody()->getContents(), true);
-                    $chaptersMetadata[$index] = new MangaChaptersMetadataListItemDto(
-                        name:$chapterMetaJson['data']['name'],
-                        volume: $chapterMetaJson['data']['volume'],
-                        number: $chapterMetaJson['data']['number'],
-                        pages: array_map(
-                            fn (array $pageMeta): array => ['image' => $pageMeta['image'], 'url' => $pageMeta['url']],
-                            $chapterMetaJson['data']['pages']
-                        ),
+                    $chaptersMetadata->addMangaChaptersListItem(
+                        new MangaChaptersMetadataListItemDto(
+                            name: $chapterMetaJson['data']['name'],
+                            volume: $chapterMetaJson['data']['volume'],
+                            number: $chapterMetaJson['data']['number'],
+                            pages: array_map(
+                                fn (array $pageMeta): MangaChaptersMetadataListItemPageFileDto => new MangaChaptersMetadataListItemPageFileDto($pageMeta['image'], $pageMeta['url']),
+                                $chapterMetaJson['data']['pages']
+                            ),
+                        )
                     );
                 },
-                'rejected'    => function (RequestException $reason, $index) use (&$rejectedRequests) {
+                'rejected'    => function (TransferException $reason) use (&$rejectedRequests) {
                     $rejectedRequests[] = [
-                        'request' => $reason->getRequest(),
+                        'request' => $reason->getRequest() ?? null,
                         'reason'  => $reason->getMessage()
                     ];
                 },
@@ -173,6 +225,7 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
         $promises = $chaptersMetaRequestsPool->promise();
         $promises->wait();
 
+        //todo: add rejected requests retry
         unset($rejectedRequests);
 
         return $chaptersMetadata;
@@ -182,20 +235,87 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
      * Creates save directory for a manga chapter
      *
      * @param string $mangaTitle Title of the manga to download, used to create parent directory for chapters
-     * @param array $chapterMeta Chapter metadata
+     * @param MangaChaptersMetadataListItemDto $chapterMeta Chapter metadata
      * @return string Path to a manga directory, where chapter pages should be saved
      */
-    private function createChapterDirectory(string $mangaTitle, array $chapterMeta): string
+    private function createChapterDirectory(string $mangaTitle, MangaChaptersMetadataListItemDto $chapterMeta): string
     {
-        $downloadPath = $this->mangaDirectorySavePath.escapeshellarg($mangaTitle).'/';
-        $saveDirName  = $chapterMeta['volume'].'_'.$chapterMeta['number'];
-        $downloadPath .= $saveDirName;
+        $downloadPath = $this->mangaDirectorySavePath.escapeshellarg($mangaTitle).'/'.$chapterMeta->volume.'_'.$chapterMeta->number;
 
         if (!is_dir($downloadPath)) {
             mkdir($downloadPath, 0777, true);
         }
 
         return $downloadPath;
+    }
+
+    /**
+     * Downloads pages (pictures) to directory specified in MangaChaptersMetadataListItemPageFileDto->fileDirPath field
+     *
+     * @param MangaChaptersMetadataListItemDto $chapterMeta Chapter metadata
+     * @return void
+     * @throws \Throwable if pages downloading failed
+     */
+    private function downloadChapterPages(MangaChaptersMetadataListItemDto $chapterMeta): void
+    {
+        $chapterPagesRequests = [];
+        $chapterPagesRetryRequests = [];
+
+        $requestsIterator = function ($chapterMeta) use (&$chapterPagesRequests) {
+            foreach ($chapterMeta->pages as $pageMeta) {
+                /** @var MangaChaptersMetadataListItemPageFileDto $pageMeta */
+                $request = new Request(
+                    method: 'GET',
+                    uri:$this->imgServerBaseUri.$pageMeta->imageUrl,
+                    headers: [
+                        'Host'            => str_replace(['https://', 'http://'], '', $this->imgServerBaseUri),
+                        'User-Agent'      => 'Mozilla/5.0 (X11; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0',
+                        'Referer'         => 'https://mangalib.me/',
+                        'Accept'          => 'image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5',
+                        'Accept-Encoding' => 'gzip, deflate, br, zstd'
+                    ]
+                );
+                $chapterPagesRequests[] = [
+                    'request' => $request,
+                    'sink' => $chapterMeta->fileDirPath.'/'.$pageMeta->imageName
+                ];
+
+                yield $request;
+            }
+        };
+
+        $chaptersMetaRequestsPool = new Pool(
+            $this->mangaPageLoader,
+            $requestsIterator($chapterMeta),
+            [
+                'concurrency' => $this->concurrency,
+                'fulfilled'   => function (Response $response, $index) use (&$chapterPagesRequests, &$chapterPagesRetryRequests) {
+                    $contentLength = $response->getHeaderLine('content-length');
+
+                    if ($response->getBody()->getSize() !== (int) $contentLength && !empty($contentLength)) {
+                        $chapterPagesRetryRequests[$index] = $chapterPagesRequests[$index];
+                    } else {
+                        file_put_contents($chapterPagesRequests[$index]['sink'], $response->getBody());
+                    }
+                },
+                'rejected'    => function ($reason, $index) {
+                    $this->logger->error(
+                        'rejected request',
+                        [
+                            'requestUri'     => $reason->getRequest()?->getUri(),
+                            'reason'         => $reason->getMessage(),
+                            'responseBody'   => $reason->getResponse()?->getBody()->getContents(),
+                            'responseStatus' => $reason->getResponse()?->getStatusCode()
+                        ]
+                    );
+                },
+            ]
+        );
+
+        $promises = $chaptersMetaRequestsPool->promise();
+        $promises->wait();
+
+        unset($chapterPagesRetryRequests);
     }
 
     /**
@@ -208,35 +328,5 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
     {
         //the only 2 elements in directory should be '.' and '..'
         return is_dir($downloadPath) && count(scandir($downloadPath)) === 2;
-    }
-
-    /**
-     * Downloads pages (pictures) to directory specified in chapter's meta 'filesPath' field
-     *
-     * @param array $chapterMeta Chapter metadata
-     * @return void
-     * @throws \Throwable if pages downloading failed
-     */
-    private function downloadChapterPages(array $chapterMeta): void
-    {
-        $pageLoader = new GuzzleClient();
-
-        $chapterPagesPromises = [];
-        foreach ($chapterMeta['pages'] as $pageMeta) {
-            $sinkPath               = $chapterMeta['filesPath'].'/'.$pageMeta['image'];
-            $chapterPagesPromises[] = $pageLoader->getAsync(
-                $this->imgServerBaseUri.$pageMeta['url'],
-                [RequestOptions::SINK => $sinkPath]
-            );
-        }
-
-        try {
-            Utils::unwrap($chapterPagesPromises);
-        } catch (\Throwable $exception) {
-            $this->logger->critical("Pages downloading failed!");
-            throw $exception;
-        }
-
-        unset($chapterPagesPromises);
     }
 }

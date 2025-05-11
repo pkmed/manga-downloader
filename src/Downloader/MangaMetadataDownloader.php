@@ -14,7 +14,7 @@ use Psr\Log\LoggerInterface;
 readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterface
 {
     /**
-     * @var GuzzleClient Http client to download a manga's metadata
+     * @var GuzzleClient Http client to download manga metadata
      */
     private GuzzleClient $mangaMetadataDownloader;
 
@@ -27,14 +27,12 @@ readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterfa
         private LoggerInterface $logger
     )
     {
+        //todo: replace with GuzzleClientFactory::createClient()
         $this->mangaMetadataDownloader = new GuzzleClient(['base_uri' => $this->mangaMetadataApiUri]);
     }
 
     /**
-     * Downloads a manga's metadata by slug url
-     *
-     * @param string $slugUrl A manga's slug from url
-     * @return MangaMetadataDto A manga's metadata
+     * {@inheritDoc}
      * @throws GuzzleException if request to api failed
      * @throws \JsonException if response is not a valid json
      */
@@ -60,13 +58,13 @@ readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterfa
                 ]
             ]);
         } catch (GuzzleException $guzzleException) {
-            $this->logger->critical("Chapters list download failed!", ['requestUrl' => $this->mangaMetadataApiUri.$slugUrl]);
+            $this->logger->critical("Manga metadata download failed!", ['requestUrl' => $this->mangaMetadataApiUri.$slugUrl]);
             throw $guzzleException;
         }
 
         try {
             $responseJson = json_decode(json: $response->getBody()->getContents(), associative: true, flags: JSON_THROW_ON_ERROR);
-            $this->logger->info("Manga's metadata downloaded successfully");
+            $this->logger->info("Manga metadata downloaded successfully");
 
             return new MangaMetadataDto(
                 title: $responseJson['data']['name'],
@@ -76,7 +74,7 @@ readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterfa
             );
         } catch (\JsonException $jsonException) {
             $this->logger->critical(
-                "Chapters list response is not a valid json!", ['responseBody' => $response->getBody()->getContents()]
+                "Manga metadata response is not a valid json!", ['responseBody' => $response->getBody()->getContents()]
             );
             throw $jsonException;
         }
