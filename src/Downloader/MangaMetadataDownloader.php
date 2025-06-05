@@ -4,6 +4,9 @@ namespace App\Downloader;
 
 use App\Downloader\Interface\MangaMetadataDownloaderInterface;
 use App\Dto\Manga\MangaMetadataDto;
+use App\Factory\GuzzleClient\GuzzleClientFactory;
+use App\Factory\GuzzleClient\GuzzleClientParameters;
+use App\Middleware\GuzzleMiddleware\ProxyMiddleware;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\GuzzleException;
 use Psr\Log\LoggerInterface;
@@ -27,8 +30,15 @@ readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterfa
         private LoggerInterface $logger
     )
     {
-        //todo: replace with GuzzleClientFactory::createClient()
-        $this->mangaMetadataDownloader = new GuzzleClient(['base_uri' => $this->mangaMetadataApiUri]);
+        $this->mangaMetadataDownloader = GuzzleClientFactory::createClient(
+            guzzleClientParams: [
+                GuzzleClientParameters::BASE_URI->value => $this->mangaMetadataApiUri,
+                GuzzleClientParameters::VERIFY->value   => false,
+            ],
+            guzzleClientMiddlewares: [
+                new ProxyMiddleware()
+            ]
+        );
     }
 
     /**

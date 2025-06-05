@@ -23,7 +23,7 @@ services:
     App\Downloader\MangaChapterDownloader:
         arguments:
             $imgServerBaseUri: 'https://img2.imglib.info'
-            $chaptersMetadataApiBaseUri: 'https://api.lib.social/api/manga/'
+            $chaptersMetadataApiBaseUri: 'https://api.cdnlibs.org/api/manga/'
             $concurrency: 4
             $mangaDirectorySavePath: '/var/www/html/data/manga/'
 

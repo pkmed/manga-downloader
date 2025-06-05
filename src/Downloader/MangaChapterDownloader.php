@@ -73,12 +73,12 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
             guzzleClientMiddlewares: [
                 new RequestIntervalMiddleware(),
                 Middleware::retry(
-                    decider: function ($retries, RequestInterface $request, ResponseInterface|null $response, TransferException|null $exception) {
+                    decider: function ($retries, RequestInterface $request, ?ResponseInterface $response, ?TransferException $exception) {
                         $retry = true;
                         if ($response && $retries < self::RETRY_LIMIT) {
                             $retry = in_array($response->getStatusCode(), [429, 499, 500])
                                 && $response->getBody()->getSize() !== (int) $response->getHeaderLine('content-length')
-                                && !empty($contentLength);
+                                && !empty($response->getBody()->getSize());
                         }
 
                         if ($exception instanceof TransferException) {
@@ -107,9 +107,11 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
      */
     public function downloadAllMangaChapters(string $slugUrl, string $mangaTitle): MangaChaptersMetadataListDto
     {
+        $this->logger->info("Downloading chapters list...");
         $chaptersList = $this->downloadChaptersList($slugUrl);
         $this->logger->info("Chapters list downloaded successfully");
 
+        $this->logger->info("Downloading chapters metadata...");
         $chaptersMeta = $this->downloadChaptersMetadata($slugUrl, $chaptersList);
         $this->logger->info("Chapters metadata downloaded successfully");
 
@@ -120,6 +122,7 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
                 $this->logger->info("Chapter $chapterMeta->number already downloaded to: $chapterMeta->fileDirPath");
                 continue;
             }
+            $this->logger->info("Downloading chapter $chapterMeta->number pages...");
             $this->downloadChapterPages($chapterMeta);
             $this->logger->info("Chapter $chapterMeta->number pages downloaded successfully to: $chapterMeta->fileDirPath");
         }
@@ -192,7 +195,6 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
         }
 
         $chaptersMetadata = new MangaChaptersMetadataListDto();
-        //todo: add dto(?)
         $rejectedRequests = [];
 
         $chaptersMetaRequestsPool = new EachPromise(
@@ -226,6 +228,10 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
         $promises->wait();
 
         //todo: add rejected requests retry
+        if (!empty($rejectedRequests)) {
+            $this->logger->debug("There are rejected image requests");
+        }
+
         unset($rejectedRequests);
 
         return $chaptersMetadata;
@@ -260,6 +266,8 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
     {
         $chapterPagesRequests = [];
         $chapterPagesRetryRequests = [];
+
+        $chapterMeta->pages = array_slice($chapterMeta->pages,0,10);
 
         $requestsIterator = function ($chapterMeta) use (&$chapterPagesRequests) {
             foreach ($chapterMeta->pages as $pageMeta) {

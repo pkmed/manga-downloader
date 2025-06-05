@@ -48,7 +48,7 @@ readonly class MangaDownloaderService
         }
         //todo: check if manga already exists in db
         $this->entityManager->persist($manga);
-        //$this->entityManager->flush();
+        $this->entityManager->flush();
         $this->logger->info("Manga and pages were downloaded and saved successfully!");
 
         return MangaResponseModelMapper::mapMangaResponseModel($manga);
