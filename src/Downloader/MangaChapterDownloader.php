@@ -209,28 +209,28 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
                             volume: $chapterMetaJson['data']['volume'],
                             number: $chapterMetaJson['data']['number'],
                             pages: array_map(
-                                fn (array $pageMeta): MangaChaptersMetadataListItemPageFileDto => new MangaChaptersMetadataListItemPageFileDto($pageMeta['image'], $pageMeta['url']),
+                                fn (array $pageMeta): MangaChaptersMetadataListItemPageFileDto => new MangaChaptersMetadataListItemPageFileDto($pageMeta['slug'], $pageMeta['image'], $pageMeta['url']),
                                 $chapterMetaJson['data']['pages']
                             ),
                         )
                     );
                 },
                 'rejected'    => function (TransferException $reason) use (&$rejectedRequests) {
-                    $rejectedRequests[] = [
-                        'request' => $reason->getRequest() ?? null,
-                        'reason'  => $reason->getMessage()
-                    ];
+                    $this->logger->error(
+                        'rejected request',
+                        [
+                            'requestUri'     => $reason->getRequest()?->getUri(),
+                            'reason'         => $reason->getMessage(),
+                            'responseBody'   => $reason->getResponse()?->getBody()->getContents(),
+                            'responseStatus' => $reason->getResponse()?->getStatusCode()
+                        ]
+                    );
                 },
             ]
         );
 
         $promises = $chaptersMetaRequestsPool->promise();
         $promises->wait();
-
-        //todo: add rejected requests retry
-        if (!empty($rejectedRequests)) {
-            $this->logger->debug("There are rejected image requests");
-        }
 
         unset($rejectedRequests);
 
@@ -267,8 +267,6 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
         $chapterPagesRequests = [];
         $chapterPagesRetryRequests = [];
 
-        $chapterMeta->pages = array_slice($chapterMeta->pages,0,10);
-
         $requestsIterator = function ($chapterMeta) use (&$chapterPagesRequests) {
             foreach ($chapterMeta->pages as $pageMeta) {
                 /** @var MangaChaptersMetadataListItemPageFileDto $pageMeta */
@@ -285,7 +283,7 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
                 );
                 $chapterPagesRequests[] = [
                     'request' => $request,
-                    'sink' => $chapterMeta->fileDirPath.'/'.$pageMeta->imageName
+                    'sink' => $chapterMeta->fileDirPath.'/pg.'.$pageMeta->pageNumber.'-'.$pageMeta->imageName
                 ];
 
                 yield $request;

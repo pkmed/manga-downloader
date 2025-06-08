@@ -43,8 +43,8 @@ readonly class MangaDownloaderService
         $mangaMeta    = $this->metadataDownloader->downloadMangaMetadata($mangaRequestModel->slugUrl);
         $chaptersMeta = $this->chapterDownloader->downloadAllMangaChapters($mangaRequestModel->slugUrl, $mangaMeta->title);
         $manga        = MangaFactory::createManga($mangaMeta);
-        foreach ($chaptersMeta as $chapterMeta) {
-           $manga->addChapter(MangaChapterFactory::createMangaChapter($manga, $chapterMeta));
+        foreach ($chaptersMeta->mangaChaptersListIterator() as $chapterMeta) {
+            $manga->addChapter(MangaChapterFactory::createMangaChapter($manga, $chapterMeta));
         }
         //todo: check if manga already exists in db
         $this->entityManager->persist($manga);

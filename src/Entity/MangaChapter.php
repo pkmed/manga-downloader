@@ -23,7 +23,7 @@ class MangaChapter
         private float  $number,
         #[ORM\Column(type: Types::SMALLINT)]
         private int    $pageCount,
-        #[ORM\ManyToOne(inversedBy: 'chapters')]
+        #[ORM\ManyToOne(targetEntity: Manga::class, inversedBy: 'chapters')]
         #[ORM\JoinColumn(nullable: false)]
         private Manga  $manga,
         //todo: add 'chapterDirectoryPath' field
