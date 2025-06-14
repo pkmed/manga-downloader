@@ -4,6 +4,7 @@ namespace App\Service;
 
 use App\Downloader\Interface\MangaChapterDownloaderInterface;
 use App\Downloader\Interface\MangaMetadataDownloaderInterface;
+use App\Entity\Manga;
 use App\Factory\MangaChapterFactory;
 use App\Factory\MangaFactory;
 use App\Mapper\MangaResponseModelMapper;
@@ -41,12 +42,14 @@ readonly class MangaDownloaderService
     {
         $this->logger->info("Started downloading the manga...");
         $mangaMeta    = $this->metadataDownloader->downloadMangaMetadata($mangaRequestModel->slugUrl);
-        $chaptersMeta = $this->chapterDownloader->downloadAllMangaChapters($mangaRequestModel->slugUrl, $mangaMeta->title);
+        if ($this->entityManager->getRepository(Manga::class)->isMangaExist($mangaMeta)) {
+            throw new \RuntimeException("Manga '{$mangaMeta->title}' was already downloaded!");
+        }
+        $chaptersMeta = $this->chapterDownloader->downloadAllMangaChapters($mangaMeta->slugUrl, $mangaMeta->title);
         $manga        = MangaFactory::createManga($mangaMeta);
         foreach ($chaptersMeta->mangaChaptersListIterator() as $chapterMeta) {
             $manga->addChapter(MangaChapterFactory::createMangaChapter($manga, $chapterMeta));
         }
-        //todo: check if manga already exists in db
         $this->entityManager->persist($manga);
         $this->entityManager->flush();
         $this->logger->info("Manga and pages were downloaded and saved successfully!");

@@ -4,8 +4,9 @@ namespace App\Downloader;
 
 use App\Downloader\Interface\MangaMetadataDownloaderInterface;
 use App\Dto\Manga\MangaMetadataDto;
+use App\Entity\Enum\MangaSource;
+use App\Factory\GuzzleClient\Enum\GuzzleClientParameters;
 use App\Factory\GuzzleClient\GuzzleClientFactory;
-use App\Factory\GuzzleClient\GuzzleClientParameters;
 use App\Middleware\GuzzleMiddleware\ProxyMiddleware;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\GuzzleException;
@@ -80,7 +81,9 @@ readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterfa
                 title: $responseJson['data']['name'],
                 summary: $responseJson['data']['summary'],
                 releaseYear: $responseJson['data']['releaseDate'],
-                chaptersCount: $responseJson['data']['items_count']['uploaded']
+                chaptersCount: $responseJson['data']['items_count']['uploaded'],
+                mangaSource: MangaSource::MANGALIB,
+                slugUrl: $responseJson['data']['slug_url']
             );
         } catch (\JsonException $jsonException) {
             $this->logger->critical(

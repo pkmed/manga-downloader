@@ -49,7 +49,13 @@ class MangaDownloaderDownloadMangaCommand extends Command
         }
 
         $io->info("Started downloading the manga...");
-        $responseModel = $this->mangaDownloaderService->downloadMangaBySlugUrl($mangaRequestModel);
+        try {
+            $responseModel = $this->mangaDownloaderService->downloadMangaBySlugUrl($mangaRequestModel);
+        } catch (\RuntimeException $re) {
+            $io->error($re->getMessage());
+
+            return Command::FAILURE;
+        }
         $io->info("Manga and pages were downloaded and saved successfully!");
 
         $io->success('Metadata json:');

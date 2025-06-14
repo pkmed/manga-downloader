@@ -2,6 +2,7 @@
 
 namespace App\Factory\GuzzleClient;
 
+use App\Factory\GuzzleClient\Enum\GuzzleClientParameters;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Handler\CurlMultiHandler;
 use GuzzleHttp\HandlerStack;

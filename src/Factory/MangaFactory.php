@@ -20,6 +20,8 @@ class MangaFactory
             title: $mangaMetadata->title,
             releaseYear: $mangaMetadata->releaseYear,
             chaptersCount: $mangaMetadata->chaptersCount,
+            mangaSource: $mangaMetadata->mangaSource,
+            slugUrl: $mangaMetadata->slugUrl,
             summary: $mangaMetadata->summary
         );
     }

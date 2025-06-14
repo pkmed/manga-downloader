@@ -2,7 +2,7 @@
 
 namespace App\Middleware\GuzzleMiddleware;
 
-use App\Factory\GuzzleClient\GuzzleRequestParameters;
+use App\Factory\GuzzleClient\Enum\GuzzleRequestParameters;
 use GuzzleHttp\Promise\PromiseInterface;
 use Psr\Http\Message\RequestInterface;
 

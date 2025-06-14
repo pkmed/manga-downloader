@@ -3,14 +3,14 @@
 namespace App\Downloader;
 
 use App\Downloader\Interface\MangaChapterDownloaderInterface;
-use App\Dto\Manga\MangaChaptersListItemDto;
 use App\Dto\Manga\MangaChaptersListDto;
+use App\Dto\Manga\MangaChaptersListItemDto;
 use App\Dto\Manga\MangaChaptersMetadataListDto;
 use App\Dto\Manga\MangaChaptersMetadataListItemDto;
 use App\Dto\Manga\MangaChaptersMetadataListItemPageFileDto;
+use App\Factory\GuzzleClient\Enum\GuzzleClientParameters;
+use App\Factory\GuzzleClient\Enum\GuzzleRequestParameters;
 use App\Factory\GuzzleClient\GuzzleClientFactory;
-use App\Factory\GuzzleClient\GuzzleClientParameters;
-use App\Factory\GuzzleClient\GuzzleRequestParameters;
 use App\Middleware\GuzzleMiddleware\RequestIntervalMiddleware;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\GuzzleException;
@@ -76,9 +76,10 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
                     decider: function ($retries, RequestInterface $request, ?ResponseInterface $response, ?TransferException $exception) {
                         $retry = true;
                         if ($response && $retries < self::RETRY_LIMIT) {
-                            $retry = in_array($response->getStatusCode(), [429, 499, 500])
-                                && $response->getBody()->getSize() !== (int) $response->getHeaderLine('content-length')
-                                && !empty($response->getBody()->getSize());
+                            $invalidResponseCode = in_array($response->getStatusCode(), [429, 499, 500]);
+                            $responseSizeLessThanShouldBe = $response->getBody()->getSize() !== (int) $response->getHeaderLine('content-length');
+                            $responseBodyIsNotEmpty = !empty($response->getBody()->getSize());
+                            $retry = $invalidResponseCode || ($responseSizeLessThanShouldBe && $responseBodyIsNotEmpty);
                         }
 
                         if ($exception instanceof TransferException) {
@@ -296,13 +297,7 @@ readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
             [
                 'concurrency' => $this->concurrency,
                 'fulfilled'   => function (Response $response, $index) use (&$chapterPagesRequests, &$chapterPagesRetryRequests) {
-                    $contentLength = $response->getHeaderLine('content-length');
-
-                    if ($response->getBody()->getSize() !== (int) $contentLength && !empty($contentLength)) {
-                        $chapterPagesRetryRequests[$index] = $chapterPagesRequests[$index];
-                    } else {
-                        file_put_contents($chapterPagesRequests[$index]['sink'], $response->getBody());
-                    }
+                    file_put_contents($chapterPagesRequests[$index]['sink'], $response->getBody());
                 },
                 'rejected'    => function ($reason, $index) {
                     $this->logger->error(

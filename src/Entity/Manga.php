@@ -2,6 +2,7 @@
 
 namespace App\Entity;
 
+use App\Entity\Enum\MangaSource;
 use App\Repository\MangaRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -9,6 +10,10 @@ use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity(repositoryClass: MangaRepository::class)]
+#[ORM\UniqueConstraint(
+    name: 'manga_source_slug_url_uq',
+    columns: ['manga_source', 'slug_url']
+)]
 class Manga
 {
     #[ORM\Id]
@@ -29,6 +34,11 @@ class Manga
         private int     $releaseYear,
         #[ORM\Column(type: Types::SMALLINT)]
         private int     $chaptersCount,
+        #[ORM\Column(type: Types::STRING, enumType: MangaSource::class)]
+        private MangaSource $mangaSource,
+        /** @var string A particular type of url that distinguishes manga, basically an identifier */
+        #[ORM\Column(type: Types::STRING)]
+        private string $slugUrl,
         #[ORM\Column(type: Types::TEXT, nullable: true)]
         private ?string $summary = null
         //todo: add 'mangaDirectoryPath' field
@@ -116,6 +126,43 @@ class Manga
                 $chapter->setManga(null);
             }
         }
+
+        return $this;
+    }
+
+    /**
+     * @param MangaSource $mangaSource
+     * @return Manga
+     */
+    public function setMangaSource(MangaSource $mangaSource): Manga
+    {
+        $this->mangaSource = $mangaSource;
+        return $this;
+    }
+
+    /**
+     * @return MangaSource
+     */
+    public function getMangaSource(): MangaSource
+    {
+        return $this->mangaSource;
+    }
+
+    /**
+     * @return string
+     */
+    public function getSlugUrl(): string
+    {
+        return $this->slugUrl;
+    }
+
+    /**
+     * @param string $slugUrl
+     * @return Manga
+     */
+    public function setSlugUrl(string $slugUrl): static
+    {
+        $this->slugUrl = $slugUrl;
 
         return $this;
     }

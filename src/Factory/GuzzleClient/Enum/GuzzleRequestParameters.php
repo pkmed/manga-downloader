@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Factory\GuzzleClient;
+namespace App\Factory\GuzzleClient\Enum;
 
 /**
  * Parameters used for configuring individual HTTP requests.
