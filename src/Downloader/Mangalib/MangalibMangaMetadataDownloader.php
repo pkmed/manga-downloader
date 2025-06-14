@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Downloader;
+namespace App\Downloader\Mangalib;
 
 use App\Downloader\Interface\MangaMetadataDownloaderInterface;
 use App\Dto\Manga\MangaMetadataDto;
@@ -15,12 +15,14 @@ use Psr\Log\LoggerInterface;
 /**
  * Downloads metadata of a chosen manga
  */
-readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterface
+readonly class MangalibMangaMetadataDownloader implements MangaMetadataDownloaderInterface
 {
     /**
      * @var GuzzleClient Http client to download manga metadata
      */
     private GuzzleClient $mangaMetadataDownloader;
+
+    private MangaSource $mangaSource;
 
     /**
      * @param string $mangaMetadataApiUri Api endpoint to download manga metadata from
@@ -31,6 +33,7 @@ readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterfa
         private LoggerInterface $logger
     )
     {
+        $this->mangaSource             = MangaSource::MANGALIB;
         $this->mangaMetadataDownloader = GuzzleClientFactory::createClient(
             guzzleClientParams: [
                 GuzzleClientParameters::BASE_URI->value => $this->mangaMetadataApiUri,
@@ -82,7 +85,7 @@ readonly class MangaMetadataDownloader implements MangaMetadataDownloaderInterfa
                 summary: $responseJson['data']['summary'],
                 releaseYear: $responseJson['data']['releaseDate'],
                 chaptersCount: $responseJson['data']['items_count']['uploaded'],
-                mangaSource: MangaSource::MANGALIB,
+                mangaSource: $this->mangaSource,
                 slugUrl: $responseJson['data']['slug_url']
             );
         } catch (\JsonException $jsonException) {

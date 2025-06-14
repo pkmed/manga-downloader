@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Downloader;
+namespace App\Downloader\Mangalib;
 
 use App\Downloader\Interface\MangaChapterDownloaderInterface;
 use App\Dto\Manga\MangaChaptersListDto;
@@ -27,7 +27,7 @@ use Psr\Log\LoggerInterface;
 /**
  * Downloads the chapters of chosen manga
  */
-readonly class MangaChapterDownloader implements MangaChapterDownloaderInterface
+readonly class MangalibMangaChapterDownloader implements MangaChapterDownloaderInterface
 {
     /**
      * @var GuzzleClient Http client to download chapters metadata
