@@ -36,12 +36,10 @@ class Manga
         private int     $chaptersCount,
         #[ORM\Column(type: Types::STRING, enumType: MangaSource::class)]
         private MangaSource $mangaSource,
-        /** @var string A particular type of url that distinguishes manga, basically an identifier */
         #[ORM\Column(type: Types::STRING)]
         private string $slugUrl,
         #[ORM\Column(type: Types::TEXT, nullable: true)]
-        private ?string $summary = null
-        //todo: add 'mangaDirectoryPath' field
+        private ?string $summary = null,
     )
     {
         $this->chapters = new ArrayCollection();
@@ -149,7 +147,7 @@ class Manga
     }
 
     /**
-     * @return string
+     * @return string A particular type of url that distinguishes manga, basically an identifier
      */
     public function getSlugUrl(): string
     {
@@ -157,7 +155,7 @@ class Manga
     }
 
     /**
-     * @param string $slugUrl
+     * @param string $slugUrl A particular type of url that distinguishes manga, basically an identifier
      * @return Manga
      */
     public function setSlugUrl(string $slugUrl): static

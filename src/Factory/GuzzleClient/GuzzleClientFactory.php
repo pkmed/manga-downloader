@@ -34,7 +34,7 @@ class GuzzleClientFactory
             }
 
             $clientParams[GuzzleClientParameters::HANDLER->value] = $stack;
-            $clientParams['debug'] = true;
+            //$clientParams['debug'] = true; todo: move config out of code
         }
 
         return new GuzzleClient($clientParams);

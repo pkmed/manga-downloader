@@ -22,7 +22,8 @@ class MangaChapterFactory
             volume: $chapterMeta->volume,
             number: $chapterMeta->number,
             pageCount: count($chapterMeta->pages),
-            manga: $manga
+            manga: $manga,
+            chapterDirectoryPath: $chapterMeta->fileDirPath
         );
     }
 }

@@ -59,7 +59,7 @@ readonly class MangalibMangaChapterDownloader implements MangaChapterDownloaderI
                 GuzzleClientParameters::VERIFY->value   => false,
             ],
             guzzleClientMiddlewares: [
-                new RequestIntervalMiddleware(),
+                new RequestIntervalMiddleware(2,3), //todo: move configuration out of code
             ]
         );
 

@@ -20,13 +20,13 @@ services:
             - '../src/Entity/'
             - '../src/Kernel.php'
 
-    App\Downloader\MangaChapterDownloader:
+    App\Downloader\Mangalib\MangalibMangaChapterDownloader:
         arguments:
             $imgServerBaseUri: 'https://img2.imglib.info'
             $chaptersMetadataApiBaseUri: 'https://api.cdnlibs.org/api/manga/'
             $concurrency: 4
             $mangaDirectorySavePath: '/var/www/html/data/manga/'
 
-    App\Downloader\MangaMetadataDownloader:
+    App\Downloader\Mangalib\MangalibMangaMetadataDownloader:
         arguments:
             $mangaMetadataApiUri: 'https://api2.mangalib.me/api/manga/'

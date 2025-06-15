@@ -26,7 +26,8 @@ class MangaChapter
         #[ORM\ManyToOne(targetEntity: Manga::class, inversedBy: 'chapters')]
         #[ORM\JoinColumn(nullable: false)]
         private Manga  $manga,
-        //todo: add 'chapterDirectoryPath' field
+        #[ORM\Column]
+        private string $chapterDirectoryPath,
     )
     {
     }
@@ -92,6 +93,25 @@ class MangaChapter
     public function setManga(?Manga $manga): static
     {
         $this->manga = $manga;
+
+        return $this;
+    }
+
+    /**
+     * @return string relative path to a chapter directory on a server
+     */
+    public function getChapterDirectoryPath(): string
+    {
+        return $this->chapterDirectoryPath;
+    }
+
+    /**
+     * @param string $chapterDirectoryPath relative path to a chapter directory on a server
+     * @return MangaChapter
+     */
+    public function setChapterDirectoryPath(string $chapterDirectoryPath): static
+    {
+        $this->chapterDirectoryPath = $chapterDirectoryPath;
 
         return $this;
     }
